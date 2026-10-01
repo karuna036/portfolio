@@ -27,6 +27,7 @@ export default function Contact() {
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null); // 'success' | 'error' | null
+  const [errorMessage, setErrorMessage] = useState('');
   const [copiedKey, setCopiedKey] = useState(null); // 'email' | 'phone' | null
 
   const handleCopy = async (key, text) => {
@@ -82,28 +83,56 @@ export default function Contact() {
 
     setIsSubmitting(true);
     setSubmitStatus(null);
+    setErrorMessage('');
 
-    const contactEndpoint = import.meta.env.VITE_CONTACT_ENDPOINT;
+    const web3FormsKey = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY;
+    const isRealWeb3FormsKey =
+      web3FormsKey &&
+      web3FormsKey.trim() !== '' &&
+      !web3FormsKey.includes('YOUR_WEB3FORMS_ACCESS_KEY');
+
+    const contactEndpoint =
+      import.meta.env.VITE_CONTACT_ENDPOINT ||
+      (isRealWeb3FormsKey ? 'https://api.web3forms.com/submit' : null);
 
     try {
-      if (contactEndpoint) {
-        // Send to configured webhook/form backend
-        const response = await fetch(contactEndpoint, {
+      if (isRealWeb3FormsKey || contactEndpoint) {
+        const endpoint = contactEndpoint || 'https://api.web3forms.com/submit';
+        const payload = isRealWeb3FormsKey
+          ? {
+              access_key: web3FormsKey.trim(),
+              name: formData.name.trim(),
+              email: formData.email.trim(),
+              subject: `[Portfolio Inquiry] ${formData.subject.trim()}`,
+              message: formData.message.trim(),
+              from_name: `${formData.name.trim()} (Portfolio Visitor)`,
+            }
+          : formData;
+
+        const response = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify(formData),
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify(payload),
         });
 
-        if (!response.ok) throw new Error('Failed to send message via endpoint.');
+        const data = await response.json();
+
+        if (!response.ok || (data && data.success === false)) {
+          throw new Error(data?.message || 'Failed to send message via email service.');
+        }
       } else {
-        // Simulated submission delay for client-side demo
-        await new Promise((resolve) => setTimeout(resolve, 900));
+        // Fallback simulation when VITE_WEB3FORMS_ACCESS_KEY is not yet added in .env
+        await new Promise((resolve) => setTimeout(resolve, 800));
       }
 
       setSubmitStatus('success');
       setFormData({ name: '', email: '', subject: '', message: '' });
-    } catch {
+    } catch (err) {
       setSubmitStatus('error');
+      setErrorMessage(err?.message || '');
     } finally {
       setIsSubmitting(false);
     }
@@ -292,7 +321,7 @@ export default function Contact() {
                       Failed to send message
                     </h4>
                     <p className="text-xs text-rose-700 dark:text-rose-300 mt-0.5 leading-relaxed">
-                      Please try again or contact me directly via <a href={`mailto:${profileData.contact.email}`} className="underline font-semibold">{profileData.contact.email}</a>.
+                      {errorMessage ? `${errorMessage} ` : ''}Please try again or contact me directly via <a href={`mailto:${profileData.contact.email}`} className="underline font-semibold">{profileData.contact.email}</a>.
                     </p>
                   </div>
                 </div>
